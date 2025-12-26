@@ -1,0 +1,296 @@
+"""
+Encrypted Credential Vault Module
+Securely store and manage credentials with encryption.
+"""
+
+import json
+import base64
+import hashlib
+import secrets
+from pathlib import Path
+from datetime import datetime
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+
+class CredentialVault:
+    """
+    Encrypted storage for credentials.
+    """
+    
+    def __init__(self, data_dir="~/.opsec"):
+        self.data_dir = Path(data_dir).expanduser()
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.vault_file = self.data_dir / "vault.enc"
+        self.salt_file = self.data_dir / "vault.salt"
+        self.fernet = None
+        self.is_unlocked = False
+
+    def _derive_key(self, master_password, salt):
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=600000,
+        )
+        key = base64.urlsafe_b64encode(kdf.derive(master_password.encode()))
+        return key
+
+    def _get_salt(self):
+        if self.salt_file.exists():
+            with open(self.salt_file, 'rb') as f:
+                return f.read()
+        else:
+            salt = secrets.token_bytes(32)
+            with open(self.salt_file, 'wb') as f:
+                f.write(salt)
+            return salt
+
+    def is_initialized(self):
+        return self.vault_file.exists() and self.salt_file.exists()
+
+    def initialize(self, master_password):
+        if self.is_initialized():
+            return False, "Vault already initialized. Use 'unlock' instead."
+        if len(master_password) < 8:
+            return False, "Master password must be at least 8 characters."
+        salt = self._get_salt()
+        key = self._derive_key(master_password, salt)
+        self.fernet = Fernet(key)
+        self.is_unlocked = True
+        vault_data = {
+            "created": datetime.now().isoformat(),
+            "version": "1.0",
+            "credentials": {}
+        }
+        self._save_vault(vault_data)
+        return True, "Vault initialized successfully."
+
+    def unlock(self, master_password):
+        if not self.is_initialized():
+            return False, "Vault not initialized. Use 'init' first."
+        salt = self._get_salt()
+        key = self._derive_key(master_password, salt)
+        self.fernet = Fernet(key)
+        try:
+            self._load_vault()
+            self.is_unlocked = True
+            return True, "Vault unlocked successfully."
+        except Exception:
+            self.fernet = None
+            self.is_unlocked = False
+            return False, "Invalid master password."
+
+    def lock(self):
+        self.fernet = None
+        self.is_unlocked = False
+        return True, "Vault locked."
+
+    def _load_vault(self):
+        if not self.fernet:
+            raise Exception("Vault is locked.")
+        with open(self.vault_file, 'rb') as f:
+            encrypted_data = f.read()
+        decrypted_data = self.fernet.decrypt(encrypted_data)
+        return json.loads(decrypted_data.decode())
+
+    def _save_vault(self, vault_data):
+        if not self.fernet:
+            raise Exception("Vault is locked.")
+        json_data = json.dumps(vault_data, indent=2).encode()
+        encrypted_data = self.fernet.encrypt(json_data)
+        with open(self.vault_file, 'wb') as f:
+            f.write(encrypted_data)
+
+    def add_credential(self, identity_name, service, username=None, password=None, 
+                      email=None, notes=None, extra_fields=None):
+        if not self.is_unlocked:
+            return False, "Vault is locked. Unlock it first."
+        vault_data = self._load_vault()
+        if identity_name not in vault_data["credentials"]:
+            vault_data["credentials"][identity_name] = []
+        credential = {
+            "id": secrets.token_hex(8),
+            "service": service,
+            "username": username,
+            "password": password,
+            "email": email,
+            "notes": notes,
+            "extra_fields": extra_fields or {},
+            "created": datetime.now().isoformat(),
+            "modified": datetime.now().isoformat()
+        }
+        vault_data["credentials"][identity_name].append(credential)
+        self._save_vault(vault_data)
+        return True, f"Credential added for {service} under identity '{identity_name}'."
+
+    def get_credentials(self, identity_name):
+        if not self.is_unlocked:
+            return None, "Vault is locked. Unlock it first."
+        vault_data = self._load_vault()
+        credentials = vault_data["credentials"].get(identity_name, [])
+        return credentials, f"Found {len(credentials)} credential(s) for '{identity_name}'."
+
+    def get_credential_by_service(self, identity_name, service):
+        if not self.is_unlocked:
+            return None, "Vault is locked. Unlock it first."
+        vault_data = self._load_vault()
+        credentials = vault_data["credentials"].get(identity_name, [])
+        for cred in credentials:
+            if cred["service"].lower() == service.lower():
+                return cred, f"Found credential for {service}."
+        return None, f"No credential found for {service}."
+
+    def update_credential(self, identity_name, credential_id, **updates):
+        if not self.is_unlocked:
+            return False, "Vault is locked. Unlock it first."
+        vault_data = self._load_vault()
+        credentials = vault_data["credentials"].get(identity_name, [])
+        for cred in credentials:
+            if cred["id"] == credential_id:
+                for key, value in updates.items():
+                    if key in cred and key not in ["id", "created"]:
+                        cred[key] = value
+                cred["modified"] = datetime.now().isoformat()
+                self._save_vault(vault_data)
+                return True, "Credential updated successfully."
+        return False, "Credential not found."
+
+    def delete_credential(self, identity_name, credential_id):
+        if not self.is_unlocked:
+            return False, "Vault is locked. Unlock it first."
+        vault_data = self._load_vault()
+        credentials = vault_data["credentials"].get(identity_name, [])
+        for i, cred in enumerate(credentials):
+            if cred["id"] == credential_id:
+                del credentials[i]
+                self._save_vault(vault_data)
+                return True, "Credential deleted successfully."
+        return False, "Credential not found."
+
+    def delete_identity_credentials(self, identity_name):
+        if not self.is_unlocked:
+            return False, "Vault is locked. Unlock it first."
+        vault_data = self._load_vault()
+        if identity_name in vault_data["credentials"]:
+            count = len(vault_data["credentials"][identity_name])
+            del vault_data["credentials"][identity_name]
+            self._save_vault(vault_data)
+            return True, f"Deleted {count} credential(s) for identity '{identity_name}'."
+        return False, f"No credentials found for identity '{identity_name}'."
+
+    def list_identities(self):
+        if not self.is_unlocked:
+            return None, "Vault is locked. Unlock it first."
+        vault_data = self._load_vault()
+        identities = list(vault_data["credentials"].keys())
+        return identities, f"Found {len(identities)} identity/identities with credentials."
+
+    def list_all_credentials(self):
+        if not self.is_unlocked:
+            return None, "Vault is locked. Unlock it first."
+        vault_data = self._load_vault()
+        summary = {}
+        for identity_name, credentials in vault_data["credentials"].items():
+            summary[identity_name] = [
+                {
+                    "id": cred["id"],
+                    "service": cred["service"],
+                    "username": cred["username"],
+                    "email": cred["email"],
+                    "created": cred["created"]
+                }
+                for cred in credentials
+            ]
+        return summary, "Credential summary retrieved."
+
+    def export_vault(self, output_path, export_password=None):
+        if not self.is_unlocked:
+            return False, "Vault is locked. Unlock it first."
+        vault_data = self._load_vault()
+        if export_password:
+            salt = secrets.token_bytes(32)
+            key = self._derive_key(export_password, salt)
+            export_fernet = Fernet(key)
+            export_data = {
+                "salt": base64.b64encode(salt).decode(),
+                "data": base64.b64encode(
+                    export_fernet.encrypt(json.dumps(vault_data).encode())
+                ).decode()
+            }
+            with open(output_path, 'w') as f:
+                json.dump(export_data, f)
+        else:
+            with open(output_path, 'wb') as f:
+                f.write(self.fernet.encrypt(json.dumps(vault_data).encode()))
+        return True, f"Vault exported to {output_path}."
+
+    def import_vault(self, import_path, import_password=None, merge=False):
+        if not self.is_unlocked:
+            return False, "Vault is locked. Unlock it first."
+        try:
+            with open(import_path, 'r') as f:
+                content = f.read()
+            try:
+                export_data = json.loads(content)
+                if "salt" in export_data and "data" in export_data:
+                    if not import_password:
+                        return False, "Import password required for this export file."
+                    salt = base64.b64decode(export_data["salt"])
+                    key = self._derive_key(import_password, salt)
+                    import_fernet = Fernet(key)
+                    encrypted_data = base64.b64decode(export_data["data"])
+                    vault_data = json.loads(import_fernet.decrypt(encrypted_data).decode())
+            except json.JSONDecodeError:
+                with open(import_path, 'rb') as f:
+                    encrypted_data = f.read()
+                vault_data = json.loads(self.fernet.decrypt(encrypted_data).decode())
+            if merge:
+                current_vault = self._load_vault()
+                for identity_name, credentials in vault_data["credentials"].items():
+                    if identity_name not in current_vault["credentials"]:
+                        current_vault["credentials"][identity_name] = []
+                    current_vault["credentials"][identity_name].extend(credentials)
+                self._save_vault(current_vault)
+                return True, "Vault merged successfully."
+            else:
+                self._save_vault(vault_data)
+                return True, "Vault imported successfully."
+        except Exception as e:
+            return False, f"Import failed: {str(e)}"
+
+    def change_master_password(self, current_password, new_password):
+        success, message = self.unlock(current_password)
+        if not success:
+            return False, "Current password is incorrect."
+        if len(new_password) < 8:
+            return False, "New password must be at least 8 characters."
+        vault_data = self._load_vault()
+        new_salt = secrets.token_bytes(32)
+        new_key = self._derive_key(new_password, new_salt)
+        with open(self.salt_file, 'wb') as f:
+            f.write(new_salt)
+        self.fernet = Fernet(new_key)
+        self._save_vault(vault_data)
+        return True, "Master password changed successfully."
+
+    def get_vault_stats(self):
+        if not self.is_unlocked:
+            return None, "Vault is locked. Unlock it first."
+        vault_data = self._load_vault()
+        total_credentials = sum(
+            len(creds) for creds in vault_data["credentials"].values()
+        )
+        services = set()
+        for creds in vault_data["credentials"].values():
+            for cred in creds:
+                services.add(cred["service"].lower())
+        return {
+            "created": vault_data.get("created"),
+            "version": vault_data.get("version"),
+            "total_identities": len(vault_data["credentials"]),
+            "total_credentials": total_credentials,
+            "unique_services": len(services),
+            "services": list(services)
+        }, "Vault statistics retrieved."

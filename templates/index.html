@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Obscura — Privacy Toolkit</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #060609; /* very dark page background */
+            --bg-secondary: #0f0f14; /* panel background */
+            --bg-card: #15151d; /* slightly lighter card background for depth */
+            --bg-hover: #1c1c24;
+            --accent: #3FB7A3; /* muted cyan-green (requested) */
+            --accent-dim: #32947f; /* slightly darker for gradients */
+            --accent-glow: rgba(63, 183, 163, 0.06); /* subtle, reduced glow */
+            --accent-subtle: rgba(63, 183, 163, 0.04);
+            --text-primary: #e6e6e6;
+            --text-secondary: #9aa0a6; /* slightly warmer muted text */
+            --text-muted: #6f757b;
+            --border: #22232a; /* subtle borders for inner sections */
+            --border-light: #2b2d34;
+            --danger: #ff4757;
+            --danger-glow: rgba(255, 71, 87, 0.12);
+            --warning: #ffa502;
+            --warning-glow: rgba(255, 165, 2, 0.12);
+            --success: #2ed573;
+            --success-glow: rgba(46, 213, 115, 0.12);
+            --info: #00ccff;
+            /* icon defaults */
+            --icon-color: var(--text-secondary);
+            --icon-border: rgba(255,255,255,0.04);
+        }
+        
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            background-image: 
+                radial-gradient(ellipse at top, rgba(255, 184, 0, 0.03) 0%, transparent 50%),
+                radial-gradient(ellipse at bottom right, rgba(255, 100, 0, 0.02) 0%, transparent 50%);
+        }
+        
+        /* Toast */
+        .toast-container { position: fixed; top: 20px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; }
+        .toast { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 20px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); animation: slideIn 0.3s ease; min-width: 280px; }
+        .toast.success { border-left: 3px solid var(--success); }
+        .toast.error { border-left: 3px solid var(--danger); }
+        .toast.warning { border-left: 3px solid var(--warning); }
+        .toast-icon { font-size: 1.2rem; }
+        .toast.success .toast-icon { color: var(--success); }
+        .toast.error .toast-icon { color: var(--danger); }
+        .toast.warning .toast-icon { color: var(--warning); }
+        .toast-message { flex: 1; font-size: 0.9rem; }
+        .toast-close { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; font-size: 1rem; }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(100px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes slideOut { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(100px); } }
+        .toast.hiding { animation: slideOut 0.3s ease forwards; }
+        
+        .container { max-width: 900px; margin: 0 auto; padding: 25px 20px; }
+        
+        header { text-align: center; margin-bottom: 25px; }
+        .logo { font-size: 1.6rem; font-weight: 700; color: var(--text-primary); background: none; margin-bottom: 6px; display: inline-flex; align-items: center; gap: 8px; }
+        /* large decorative O removed for quieter, typographic logo */
+        .subtitle { color: var(--text-secondary); font-size: 0.85rem; }
+        
+        /* Tabs */
+        .tabs { display: flex; gap: 6px; background: transparent; padding: 2px; border-radius: 12px; margin-bottom: 20px; overflow-x: auto; }
+        .tab { flex: 1; padding: 8px 10px; background: transparent; border: none; border-radius: 10px; color: var(--text-secondary); font-family: 'Space Grotesk', sans-serif; font-size: 0.88rem; font-weight: 600; cursor: pointer; transition: background 0.12s ease, color 0.12s ease; display: flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; min-width: fit-content; }
+        .tab:hover { color: var(--text-primary); }
+        /* Icon styling: rounded, medium stroke, interactive */
+        .tab-icon { display: inline-flex; width: 30px; height: 30px; align-items: center; justify-content: center; border-radius: 8px; border: 2px solid var(--icon-border); color: var(--icon-color); background: transparent; font-size: 0.92rem; transition: all 0.14s ease; }
+        .tab:hover .tab-icon { color: var(--accent); border-color: var(--accent); }
+        .tab.active { color: var(--text-primary); }
+        .tab.active .tab-icon { background: var(--accent); color: #000; border-color: var(--accent); box-shadow: none; }
+        
+        .tab-content { display: none; animation: fadeIn 0.3s ease; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Cards */
+        .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-bottom: 18px; box-shadow: 0 6px 18px rgba(0,0,0,0.28); }
+        .card-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 18px; display: flex; align-items: center; gap: 10px; }
+        .card-title::before { content: ''; width: 4px; height: 20px; background: var(--accent); border-radius: 2px; }
+        
+        .options { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+        .option-group { display: flex; flex-direction: column; gap: 5px; }
+        .option-group label { font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+        .option-group input[type="number"], .option-group input[type="text"], .option-group select, .option-group textarea { background: #0e0e14; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; color: var(--text-primary); font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; transition: all 0.12s; }
+        .option-group input[type="number"] { width: 90px; }
+        .option-group input[type="text"] { width: 100%; }
+        .option-group select { font-family: 'Space Grotesk', sans-serif; cursor: pointer; }
+        .option-group textarea { width: 100%; min-height: 60px; resize: vertical; }
+        .option-group input:focus, .option-group select:focus, .option-group textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+        
+        .checkbox-group { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+        .checkbox-group input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
+        .checkbox-group label { cursor: pointer; color: var(--text-primary); font-size: 0.9rem; }
+        
+        /* Buttons */
+        .btn { font-family: 'Space Grotesk', sans-serif; font-weight: 600; padding: 10px 20px; border: none; border-radius: 10px; cursor: pointer; font-size: 0.9rem; transition: all 0.2s ease; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+        .btn-primary { background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%); color: #000; box-shadow: 0 6px 18px var(--accent-glow); padding: 12px 22px; font-size: 1rem; }
+        .btn-primary:hover { transform: translateY(-3px); box-shadow: 0 14px 40px rgba(0,0,0,0.45); }
+        .btn-primary:active { transform: translateY(0); }
+        .btn-secondary { background: rgba(255,255,255,0.01); color: var(--text-secondary); border: 1px solid rgba(255,255,255,0.03); }
+        .btn-secondary:hover { border-color: rgba(255,255,255,0.06); background: rgba(255,255,255,0.015); }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-danger:hover { background: #ff5f6d; box-shadow: 0 4px 20px var(--danger-glow); }
+        .btn-success { background: var(--success); color: #000; }
+        .btn-info { background: var(--info); color: #000; }
+        .btn-info:hover { background: #00b8e6; transform: translateY(-2px); }
+        .btn-sm { padding: 8px 14px; font-size: 0.8rem; }
+        .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+        
+        /* Results */
+        .results { display: none; margin-top: 20px; animation: fadeIn 0.3s ease; }
+        .results.show { display: block; }
+        .result-row { display: flex; align-items: center; padding: 12px; background: #111217; border-radius: 10px; margin-bottom: 8px; border: 1px solid var(--border); transition: background 0.12s; }
+        .result-row:hover { border-color: var(--border-light); }
+        .result-label { font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; width: 100px; flex-shrink: 0; }
+        .result-value { font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; color: var(--accent); flex: 1; word-break: break-all; padding: 0 10px; }
+        .copy-btn { background: none; border: 1px solid var(--border); color: var(--text-secondary); cursor: pointer; padding: 5px 10px; border-radius: 6px; font-size: 0.7rem; transition: all 0.2s; flex-shrink: 0; }
+        .copy-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-glow); }
+        .copy-btn.copied { color: var(--accent); border-color: var(--accent); }
+        
+        /* Strength Bar */
+        .strength-container { display: flex; align-items: center; gap: 10px; flex: 1; padding: 0 10px; }
+        .strength-bar { flex: 1; height: 6px; background: var(--bg-primary); border-radius: 3px; overflow: hidden; }
+        .strength-fill { height: 100%; border-radius: 3px; transition: width 0.3s ease, background 0.3s ease; }
+        .strength-fill.very_weak { width: 20%; background: var(--danger); }
+        .strength-fill.weak { width: 40%; background: var(--danger); }
+        .strength-fill.reasonable { width: 60%; background: var(--warning); }
+        .strength-fill.strong { width: 80%; background: var(--success); }
+        .strength-fill.very_strong { width: 100%; background: linear-gradient(90deg, var(--success), var(--info)); }
+        .strength-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; white-space: nowrap; }
+        .strength-label.very_weak, .strength-label.weak { color: var(--danger); }
+        .strength-label.reasonable { color: var(--warning); }
+        .strength-label.strong, .strength-label.very_strong { color: var(--success); }
+        .copy-all-btn { margin-top: 10px; width: 100%; }
+        
+        /* Identity Cards */
+        .identity-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+        .identity-header h2 { font-size: 1.1rem; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+        .identity-header h2::before { content: ''; width: 4px; height: 20px; background: var(--accent); border-radius: 2px; }
+        .identity-count { background: var(--accent-subtle); color: var(--accent); padding: 3px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
+        .identity-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+        .identity-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.2s ease; }
+        .identity-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+        .identity-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+        .identity-name { font-weight: 600; font-size: 0.95rem; color: var(--text-primary); }
+        .identity-badge { font-size: 0.65rem; padding: 2px 6px; border-radius: 8px; font-weight: 600; }
+        .identity-badge.has-password { background: var(--accent-subtle); color: var(--accent); }
+        .identity-badge.no-password { background: var(--bg-card); color: var(--text-secondary); }
+        .identity-alias { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--accent); margin-bottom: 6px; }
+        .identity-purpose { font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .identity-meta { display: flex; gap: 12px; font-size: 0.7rem; color: var(--text-muted); }
+        .identity-meta span { display: flex; align-items: center; gap: 4px; }
+        .empty-state { text-align: center; padding: 40px 20px; color: var(--text-secondary); }
+        .empty-state-icon { font-size: 2.5rem; margin-bottom: 12px; opacity: 0.5; }
+        .empty-state-text { font-size: 0.9rem; margin-bottom: 15px; }
+        
+        /* File Upload */
+        .file-drop-zone { border: 2px dashed var(--border); border-radius: 12px; padding: 40px 20px; text-align: center; transition: all 0.2s; cursor: pointer; }
+        .file-drop-zone:hover, .file-drop-zone.dragover { border-color: var(--accent); background: var(--accent-glow); }
+        .file-drop-zone-icon { font-size: 2.5rem; margin-bottom: 10px; opacity: 0.6; }
+        .file-drop-zone-text { color: var(--text-secondary); font-size: 0.9rem; }
+        .file-drop-zone-hint { color: var(--text-muted); font-size: 0.75rem; margin-top: 8px; }
+        .file-input { display: none; }
+        .file-list { margin-top: 15px; }
+        .file-item { display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--border); }
+        .file-item-icon { font-size: 1.5rem; }
+        .file-item-info { flex: 1; }
+        .file-item-name { font-size: 0.9rem; font-weight: 500; margin-bottom: 2px; }
+        .file-item-size { font-size: 0.75rem; color: var(--text-secondary); }
+        .file-item-status { font-size: 0.75rem; padding: 3px 8px; border-radius: 4px; }
+        .file-item-status.pending { background: var(--bg-card); color: var(--text-secondary); }
+        .file-item-status.processing { background: var(--accent-glow); color: var(--accent); }
+        .file-item-status.done { background: var(--success-glow); color: var(--success); }
+        .file-item-status.error { background: var(--danger-glow); color: var(--danger); }
+        .file-item-remove { background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 1.2rem; padding: 4px; }
+        .file-item-remove:hover { color: var(--danger); }
+        
+        /* Checklist */
+        .checklist { list-style: none; }
+        .checklist-item { display: flex; align-items: flex-start; gap: 12px; padding: 14px; background: var(--bg-secondary); border-radius: 10px; margin-bottom: 8px; border: 1px solid var(--border); transition: all 0.2s; cursor: pointer; }
+        .checklist-item:hover { border-color: var(--border-light); }
+        .checklist-item.checked { border-color: var(--success); background: rgba(46, 213, 115, 0.05); }
+        .checklist-checkbox { width: 22px; height: 22px; border: 2px solid var(--border); border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s; font-size: 0.8rem; color: transparent; }
+        .checklist-item.checked .checklist-checkbox { background: var(--success); border-color: var(--success); color: #000; }
+        .checklist-content { flex: 1; }
+        .checklist-title { font-weight: 600; font-size: 0.9rem; margin-bottom: 3px; }
+        .checklist-desc { font-size: 0.8rem; color: var(--text-secondary); }
+        .checklist-progress { margin-top: 15px; padding: 15px; background: var(--bg-secondary); border-radius: 10px; border: 1px solid var(--border); }
+        .checklist-progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .checklist-progress-label { font-size: 0.85rem; font-weight: 600; }
+        .checklist-progress-value { font-size: 0.85rem; color: var(--accent); }
+        .checklist-progress-bar { height: 8px; background: var(--bg-primary); border-radius: 4px; overflow: hidden; }
+        .checklist-progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--success)); border-radius: 4px; transition: width 0.3s ease; }
+        
+        /* Noise Generator */
+        .noise-output { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 10px; padding: 15px; margin-top: 15px; max-height: 300px; overflow-y: auto; }
+        .noise-output pre { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--text-primary); white-space: pre-wrap; word-break: break-all; }
+        .noise-item { padding: 8px 0; border-bottom: 1px solid var(--border); }
+        .noise-item:last-child { border-bottom: none; }
+        .noise-category { font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; }
+        .noise-value { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: var(--accent); }
+        
+        /* Modal */
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 500; opacity: 0; visibility: hidden; transition: all 0.3s ease; }
+        .modal-overlay.active { opacity: 1; visibility: visible; }
+        .modal { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; width: 90%; max-width: 500px; max-height: 85vh; overflow-y: auto; transform: translateY(20px); transition: transform 0.3s ease; }
+        .modal-overlay.active .modal { transform: translateY(0); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 18px 22px; border-bottom: 1px solid var(--border); }
+        .modal-title { font-size: 1.1rem; font-weight: 600; }
+        .modal-close { background: none; border: none; color: var(--text-secondary); font-size: 1.4rem; cursor: pointer; padding: 0; line-height: 1; }
+        .modal-close:hover { color: var(--text-primary); }
+        .modal-body { padding: 22px; }
+        .modal-footer { padding: 14px 22px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; }
+        
+        .form-group { margin-bottom: 16px; }
+        .form-group:last-child { margin-bottom: 0; }
+        .form-group label { display: block; font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+        .form-group input[type="text"], .form-group textarea { width: 100%; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; color: var(--text-primary); font-family: 'Space Grotesk', sans-serif; font-size: 0.9rem; transition: all 0.2s; }
+        .form-group input:focus, .form-group textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+        .form-group textarea { min-height: 70px; resize: vertical; }
+        
+        .detail-section { margin-bottom: 16px; }
+        .detail-section:last-child { margin-bottom: 0; }
+        .detail-label { font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
+        .detail-value { font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; color: var(--accent); background: #0f1014; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-light); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .detail-value .value-text { flex: 1; word-break: break-all; }
+        .detail-value.muted { color: var(--text-primary); }
+        .reveal-btn { background: none; border: 1px solid var(--border); color: var(--text-secondary); padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+        .reveal-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .detail-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .detail-meta .detail-value { font-family: 'Space Grotesk', sans-serif; font-size: 0.8rem; color: var(--text-primary); }
+        .detail-actions { display: flex; gap: 10px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
+        
+        .confirm-dialog { text-align: center; padding: 10px 0; }
+        .confirm-icon { font-size: 2.5rem; margin-bottom: 12px; }
+        .confirm-icon.danger { color: var(--danger); }
+        .confirm-icon.warning { color: var(--warning); }
+        .confirm-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; }
+        .confirm-message { color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 5px; }
+        .confirm-name { font-family: 'JetBrains Mono', monospace; color: var(--accent); font-size: 0.95rem; }
+        
+        footer { text-align: center; margin-top: 30px; color: var(--text-secondary); font-size: 0.75rem; }
+        
+        .spinner { width: 14px; height: 14px; border: 2px solid transparent; border-top-color: currentColor; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .btn.loading .btn-text { display: none; }
+        .btn .spinner { display: none; }
+        .btn.loading .spinner { display: inline-block; }
+        
+        @media (max-width: 600px) {
+            .container { padding: 15px 12px; }
+            .logo { font-size: 1.6rem; }
+            .tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            .tab { min-width: auto; padding: 8px 10px; font-size: 0.8rem; }
+            .result-row { flex-wrap: wrap; gap: 6px; }
+            .result-label { width: 100%; }
+            .result-value { width: 100%; padding: 0; }
+            .actions { flex-direction: column; }
+            .btn { width: 100%; }
+            .identity-grid { grid-template-columns: 1fr; }
+            .detail-meta { grid-template-columns: 1fr; }
+            .modal { width: 95%; margin: 10px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="toast-container" id="toastContainer"></div>
+    
+    <div class="container">
+        <header>
+            <h1 class="logo">Obscura</h1>
+            <p class="subtitle">Privacy-first Toolkit</p>
+        </header>
+        
+        <div class="tabs">
+            <button class="tab active" data-tab="generator" onclick="switchTab('generator')">
+                <span class="tab-icon">⚡</span><span>Generator</span>
+            </button>
+            <button class="tab" data-tab="identities" onclick="switchTab('identities')">
+                <span class="tab-icon">🎭</span><span>Identities</span>
+            </button>
+            <button class="tab" data-tab="metadata" onclick="switchTab('metadata')">
+                <span class="tab-icon">🧹</span><span>Metadata</span>
+            </button>
+            <button class="tab" data-tab="checklist" onclick="switchTab('checklist')">
+                <span class="tab-icon">✅</span><span>Checklist</span>
+            </button>
+            
+        </div>
+        
+        <!-- Generator Tab -->
+        <div class="tab-content active" id="generatorTab">
+            <div class="card">
+                <h2 class="card-title">Generate Credentials</h2>
+                <div class="options">
+                    <div class="option-group">
+                        <label>Password Length</label>
+                        <input type="number" id="passwordLength" value="20" min="8" max="128">
+                    </div>
+                    <div class="option-group">
+                        <label>Passphrase Words</label>
+                        <input type="number" id="passphraseWords" value="5" min="3" max="12">
+                    </div>
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="includePassphrase" checked>
+                    <label for="includePassphrase">Include passphrase</label>
+                </div>
+                <div class="actions">
+                    <button class="btn btn-primary" id="generateBtn" onclick="generateCredentials()">
+                        <span class="btn-text">⚡ Generate Identity</span><div class="spinner"></div>
+                    </button>
+                    <button class="btn btn-secondary" onclick="generatePasswordOnly()">🔑 Password Only</button>
+                    <button class="btn btn-secondary" onclick="generatePassphraseOnly()">📝 Passphrase Only</button>
+                </div>
+                <div class="results" id="results">
+                    <div class="result-row"><span class="result-label">Alias</span><span class="result-value" id="aliasValue">-</span><button class="copy-btn" onclick="copyToClipboard('aliasValue', this)">Copy</button></div>
+                    <div class="result-row"><span class="result-label">Email Prefix</span><span class="result-value" id="emailValue">-</span><button class="copy-btn" onclick="copyToClipboard('emailValue', this)">Copy</button></div>
+                    <div class="result-row"><span class="result-label">Password</span><span class="result-value" id="passwordValue">-</span><button class="copy-btn" onclick="copyToClipboard('passwordValue', this)">Copy</button></div>
+                    <div class="result-row"><span class="result-label">Strength</span><div class="strength-container"><div class="strength-bar"><div class="strength-fill" id="strengthFill"></div></div><span class="strength-label" id="strengthLabel">-</span></div></div>
+                    <div class="result-row" id="passphraseRow" style="display:none;"><span class="result-label">Passphrase</span><span class="result-value" id="passphraseValue">-</span><button class="copy-btn" onclick="copyToClipboard('passphraseValue', this)">Copy</button></div>
+                    <button class="btn btn-secondary copy-all-btn" onclick="copyAll()">📋 Copy All</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Identities Tab -->
+        <div class="tab-content" id="identitiesTab">
+            <div class="card">
+                <div class="identity-header">
+                    <h2>Saved Identities <span class="identity-count" id="identityCount">0</span></h2>
+                    <button class="btn btn-primary btn-sm" onclick="openCreateModal()">+ New Identity</button>
+                </div>
+                <div id="identityList">
+                    <div class="empty-state" id="emptyState"><div class="empty-state-icon">🎭</div><p class="empty-state-text">No identities yet. Create your first one!</p></div>
+                    <div class="identity-grid" id="identityGrid"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Metadata Tab -->
+        <div class="tab-content" id="metadataTab">
+            <div class="card">
+                <h2 class="card-title">Metadata Stripper</h2>
+                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 15px;">Remove identifying metadata from images, audio, and video files before sharing.</p>
+                <div class="file-drop-zone" id="fileDropZone" onclick="document.getElementById('fileInput').click()">
+                    <div class="file-drop-zone-icon">📁</div>
+                    <div class="file-drop-zone-text">Drop files here or click to browse</div>
+                    <div class="file-drop-zone-hint">Supports: JPG, PNG, MP3, MP4, and more</div>
+                </div>
+                <input type="file" id="fileInput" class="file-input" multiple accept="image/*,audio/*,video/*" onchange="handleFileSelect(event)">
+                <div class="file-list" id="fileList"></div>
+                <div class="actions" style="margin-top: 15px; display: none;" id="metadataActions">
+                    <button class="btn btn-info" onclick="inspectSelectedFile()"><span class="btn-text">🔍 Inspect Metadata</span><div class="spinner"></div></button>
+                    <button class="btn btn-primary" onclick="stripAllMetadata()"><span class="btn-text">🧹 Strip All Metadata</span><div class="spinner"></div></button>
+                    <button class="btn btn-success" onclick="downloadAllCleaned()">📥 Download All Clean</button>
+                    <button class="btn btn-secondary" onclick="clearFiles()">Clear All</button>
+                </div>
+                <div id="inspectionResults" style="display: none; margin-top: 20px;"></div>
+            </div>
+        </div>
+        
+        <!-- Checklist Tab -->
+        <div class="tab-content" id="checklistTab">
+            <div class="card">
+                <h2 class="card-title">OPSEC Checklist</h2>
+                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 15px;">Pre-operation security checklist. Complete before sensitive activities.</p>
+                <ul class="checklist" id="opsecChecklist">
+                    <li class="checklist-item" onclick="toggleChecklist(this)" data-id="vpn">
+                        <div class="checklist-checkbox">✓</div>
+                        <div class="checklist-content"><div class="checklist-title">VPN Active</div><div class="checklist-desc">Connected to a trusted VPN service with no leaks</div></div>
+                    </li>
+                    <li class="checklist-item" onclick="toggleChecklist(this)" data-id="tor">
+                        <div class="checklist-checkbox">✓</div>
+                        <div class="checklist-content"><div class="checklist-title">Tor Browser (if needed)</div><div class="checklist-desc">Using Tor for maximum anonymity on sensitive ops</div></div>
+                    </li>
+                    <li class="checklist-item" onclick="toggleChecklist(this)" data-id="identity">
+                        <div class="checklist-checkbox">✓</div>
+                        <div class="checklist-content"><div class="checklist-title">Dedicated Identity</div><div class="checklist-desc">Using a compartmentalized identity for this operation</div></div>
+                    </li>
+                    <li class="checklist-item" onclick="toggleChecklist(this)" data-id="metadata">
+                        <div class="checklist-checkbox">✓</div>
+                        <div class="checklist-content"><div class="checklist-title">Metadata Stripped</div><div class="checklist-desc">All files cleaned of identifying metadata</div></div>
+                    </li>
+                    <li class="checklist-item" onclick="toggleChecklist(this)" data-id="browser">
+                        <div class="checklist-checkbox">✓</div>
+                        <div class="checklist-content"><div class="checklist-title">Browser Hardened</div><div class="checklist-desc">Privacy extensions active, cookies cleared</div></div>
+                    </li>
+                    <li class="checklist-item" onclick="toggleChecklist(this)" data-id="location">
+                        <div class="checklist-checkbox">✓</div>
+                        <div class="checklist-content"><div class="checklist-title">Location Services Off</div><div class="checklist-desc">GPS and location tracking disabled</div></div>
+                    </li>
+                    <li class="checklist-item" onclick="toggleChecklist(this)" data-id="accounts">
+                        <div class="checklist-checkbox">✓</div>
+                        <div class="checklist-content"><div class="checklist-title">Logged Out of Personal Accounts</div><div class="checklist-desc">No personal accounts active in browser</div></div>
+                    </li>
+                    <li class="checklist-item" onclick="toggleChecklist(this)" data-id="device">
+                        <div class="checklist-checkbox">✓</div>
+                        <div class="checklist-content"><div class="checklist-title">Dedicated Device/VM</div><div class="checklist-desc">Using isolated device or virtual machine</div></div>
+                    </li>
+                </ul>
+                <div class="checklist-progress">
+                    <div class="checklist-progress-header">
+                        <span class="checklist-progress-label">OPSEC Readiness</span>
+                        <span class="checklist-progress-value" id="checklistPercent">0%</span>
+                    </div>
+                    <div class="checklist-progress-bar"><div class="checklist-progress-fill" id="checklistFill" style="width: 0%;"></div></div>
+                </div>
+                <div class="actions" style="margin-top: 15px;">
+                    <button class="btn btn-secondary" onclick="resetChecklist()">Reset Checklist</button>
+                    <button class="btn btn-success" onclick="checkAll()">Check All</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Auditor removed (not needed) -->
+        
+        <!-- Noise generator removed -->
+        
+        <footer><p>Obscura v1.3.0</p></footer>
+    </div>
+    
+    <!-- Modals -->
+    <div class="modal-overlay" id="createModal">
+        <div class="modal">
+            <div class="modal-header"><h3 class="modal-title">Create New Identity</h3><button class="modal-close" onclick="closeModal('createModal')">&times;</button></div>
+            <div class="modal-body">
+                <div class="form-group"><label>Identity Name *</label><input type="text" id="newIdentityName" placeholder="e.g., darkweb_research"></div>
+                <div class="form-group"><label>Purpose</label><textarea id="newIdentityPurpose" placeholder="What will this identity be used for?"></textarea></div>
+                <div class="checkbox-group"><input type="checkbox" id="newIdentityPassword" checked><label for="newIdentityPassword">Generate password</label></div>
+                <div class="checkbox-group"><input type="checkbox" id="newIdentityPassphrase"><label for="newIdentityPassphrase">Generate passphrase</label></div>
+            </div>
+            <div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal('createModal')">Cancel</button><button class="btn btn-primary" onclick="createIdentity()"><span class="btn-text">Create Identity</span><div class="spinner"></div></button></div>
+        </div>
+    </div>
+    
+    <div class="modal-overlay" id="viewModal">
+        <div class="modal">
+            <div class="modal-header"><h3 class="modal-title" id="viewModalTitle">Identity Details</h3><button class="modal-close" onclick="closeModal('viewModal')">&times;</button></div>
+            <div class="modal-body" id="viewModalBody"></div>
+        </div>
+    </div>
+    
+    <div class="modal-overlay" id="confirmModal">
+        <div class="modal" style="max-width: 380px;">
+            <div class="modal-body">
+                <div class="confirm-dialog">
+                    <div class="confirm-icon danger" id="confirmIcon">🔥</div>
+                    <h3 class="confirm-title" id="confirmTitle">Burn Identity?</h3>
+                    <p class="confirm-message" id="confirmMessage">This action cannot be undone.</p>
+                    <p class="confirm-name" id="confirmName"></p>
+                </div>
+            </div>
+            <div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal('confirmModal')">Cancel</button><button class="btn btn-danger" id="confirmBtn" onclick="confirmAction()"><span class="btn-text">Confirm</span><div class="spinner"></div></button></div>
+        </div>
+    </div>
+    
+    <script>
+        let currentIdentity = null, confirmCallback = null, selectedFiles = [], noiseData = null;
+
+        function apiFetch(url, opts = {}) {
+            opts.headers = opts.headers || {};
+            return fetch(url, opts);
+        }
+        
+        // Toast
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            const icons = { success: '✓', error: '✗', warning: '⚠' };
+            toast.innerHTML = `<span class="toast-icon">${icons[type] || icons.success}</span><span class="toast-message">${message}</span><button class="toast-close" onclick="dismissToast(this)">&times;</button>`;
+            container.appendChild(toast);
+            setTimeout(() => dismissToast(toast.querySelector('.toast-close')), 4000);
+        }
+        function dismissToast(btn) { const toast = btn.closest('.toast'); if (toast) { toast.classList.add('hiding'); setTimeout(() => toast.remove(), 300); } }
+        
+        // Tabs
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+            document.getElementById(`${tabName}Tab`).classList.add('active');
+            if (tabName === 'identities') loadIdentities();
+        }
+        
+        // Modals
+        function openModal(id) { document.getElementById(id).classList.add('active'); document.body.style.overflow = 'hidden'; }
+        function closeModal(id) { document.getElementById(id).classList.remove('active'); document.body.style.overflow = ''; }
+        function openCreateModal() { document.getElementById('newIdentityName').value = ''; document.getElementById('newIdentityPurpose').value = ''; document.getElementById('newIdentityPassword').checked = true; document.getElementById('newIdentityPassphrase').checked = false; openModal('createModal'); }
+        
+        // Generator
+        async function generateCredentials() {
+            const btn = document.getElementById('generateBtn'); btn.classList.add('loading');
+            try {
+                const response = await fetch('/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ include_passphrase: document.getElementById('includePassphrase').checked, password_length: parseInt(document.getElementById('passwordLength').value) || 20, passphrase_words: parseInt(document.getElementById('passphraseWords').value) || 5 }) });
+                const data = await response.json();
+                if (data.success) { displayResults(data.credentials); showToast('Credentials generated!'); }
+            } catch (e) { showToast('Failed to generate credentials', 'error'); } finally { btn.classList.remove('loading'); }
+        }
+        async function generatePasswordOnly() {
+            try {
+                const response = await fetch('/api/generate-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ length: parseInt(document.getElementById('passwordLength').value) || 20 }) });
+                const data = await response.json();
+                if (data.success) { displayResults({ username: '-', email_prefix: '-', password: data.password, password_strength: data.strength }); showToast('Password generated!'); }
+            } catch (e) { showToast('Failed to generate password', 'error'); }
+        }
+        async function generatePassphraseOnly() {
+            try {
+                const response = await fetch('/api/generate-passphrase', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ words: parseInt(document.getElementById('passphraseWords').value) || 5 }) });
+                const data = await response.json();
+                if (data.success) { displayResults({ username: '-', email_prefix: '-', password: '-', password_strength: { rating: 'strong', description: 'Passphrase' }, passphrase: data.passphrase }); showToast('Passphrase generated!'); }
+            } catch (e) { showToast('Failed to generate passphrase', 'error'); }
+        }
+        function displayResults(creds) {
+            document.getElementById('aliasValue').textContent = creds.username || '-';
+            document.getElementById('emailValue').textContent = creds.email_prefix || '-';
+            document.getElementById('passwordValue').textContent = creds.password || '-';
+            const strength = creds.password_strength || {};
+            document.getElementById('strengthFill').className = 'strength-fill ' + (strength.rating || 'unknown');
+            document.getElementById('strengthLabel').className = 'strength-label ' + (strength.rating || 'unknown');
+            document.getElementById('strengthLabel').textContent = strength.description || '-';
+            const passphraseRow = document.getElementById('passphraseRow');
+            if (creds.passphrase) { document.getElementById('passphraseValue').textContent = creds.passphrase; passphraseRow.style.display = 'flex'; } else { passphraseRow.style.display = 'none'; }
+            document.getElementById('results').classList.add('show');
+        }
+        
+        // Copy
+        function fallbackCopyText(text) { const t = document.createElement('textarea'); t.value = text; t.style.position = 'fixed'; t.style.left = '-9999px'; document.body.appendChild(t); t.select(); try { document.execCommand('copy'); return true; } catch (e) { return false; } finally { document.body.removeChild(t); } }
+        function copyToClipboard(id, btn) { const text = document.getElementById(id).textContent; if (text && text !== '-') { if (navigator.clipboard) { navigator.clipboard.writeText(text).then(() => { showCopied(btn); showToast('Copied!'); }).catch(() => { if (fallbackCopyText(text)) { showCopied(btn); showToast('Copied!'); } }); } else if (fallbackCopyText(text)) { showCopied(btn); showToast('Copied!'); } } }
+        function copyText(text, btn) { if (text && text !== '-' && text !== '••••••••') { if (navigator.clipboard) { navigator.clipboard.writeText(text).then(() => { if (btn) showCopied(btn); showToast('Copied!'); }); } else if (fallbackCopyText(text)) { if (btn) showCopied(btn); showToast('Copied!'); } } }
+        function showCopied(btn) { const orig = btn.textContent; btn.textContent = 'Copied!'; btn.classList.add('copied'); setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1500); }
+        function copyAll() { const a = document.getElementById('aliasValue').textContent, e = document.getElementById('emailValue').textContent, p = document.getElementById('passwordValue').textContent, ph = document.getElementById('passphraseValue').textContent; let t = ''; if (a !== '-') t += `Alias: ${a}\n`; if (e !== '-') t += `Email: ${e}\n`; if (p !== '-') t += `Password: ${p}\n`; if (ph && ph !== '-') t += `Passphrase: ${ph}\n`; const btn = document.querySelector('.copy-all-btn'); if (navigator.clipboard) { navigator.clipboard.writeText(t.trim()).then(() => { btn.textContent = '✓ Copied!'; showToast('All copied!'); setTimeout(() => btn.textContent = '📋 Copy All', 1500); }); } }
+        
+        // Identities
+        async function loadIdentities() {
+            try {
+                const response = await apiFetch('/api/identities'); const data = await response.json();
+                if (data.success) {
+                    const grid = document.getElementById('identityGrid'), empty = document.getElementById('emptyState'), count = document.getElementById('identityCount');
+                    count.textContent = data.count;
+                    if (data.count === 0) { empty.style.display = 'block'; grid.innerHTML = ''; } else {
+                        empty.style.display = 'none';
+                        const ids = await Promise.all(data.identities.map(n => apiFetch(`/api/identity/${encodeURIComponent(n)}`).then(r => r.json())));
+                        grid.innerHTML = ids.map(res => { if (!res.success) return ''; const id = res.identity; return `<div class="identity-card" onclick="viewIdentity('${id.name}')"><div class="identity-card-header"><span class="identity-name">${escapeHtml(id.name)}</span><span class="identity-badge ${id.password ? 'has-password' : 'no-password'}">${id.password ? '🔑' : 'No Pwd'}</span></div><div class="identity-alias">${escapeHtml(id.alias)}</div><div class="identity-purpose">${escapeHtml(id.purpose || 'No purpose')}</div><div class="identity-meta"><span>📊 ${id.use_count || 0}</span><span>📅 ${formatDate(id.created)}</span></div></div>`; }).join('');
+                    }
+                }
+            } catch (e) { showToast('Failed to load identities', 'error'); }
+        }
+        async function viewIdentity(name) { try { const res = await apiFetch(`/api/identity/${encodeURIComponent(name)}`); const data = await res.json(); if (data.success) { currentIdentity = data.identity; document.getElementById('viewModalTitle').textContent = name; document.getElementById('viewModalBody').innerHTML = genIdentityHTML(data.identity); openModal('viewModal'); } } catch (e) { showToast('Failed to load identity', 'error'); } }
+        function genIdentityHTML(id) { return `<div class="detail-section"><div class="detail-label">Alias</div><div class="detail-value"><span class="value-text">${escapeHtml(id.alias)}</span><button class="copy-btn" onclick="copyText('${escapeHtml(id.alias)}', this)">Copy</button></div></div><div class="detail-section"><div class="detail-label">Email Prefix</div><div class="detail-value"><span class="value-text">${escapeHtml(id.email_prefix)}</span><button class="copy-btn" onclick="copyText('${escapeHtml(id.email_prefix)}', this)">Copy</button></div></div>${id.password ? `<div class="detail-section"><div class="detail-label">Password</div><div class="detail-value"><span class="value-text" id="pwdDisp">••••••••</span><button class="reveal-btn" onclick="togglePwd('${escapeHtml(id.password)}')">Show</button><button class="copy-btn" onclick="copyText('${escapeHtml(id.password)}', this)">Copy</button></div></div>` : ''}${id.passphrase ? `<div class="detail-section"><div class="detail-label">Passphrase</div><div class="detail-value"><span class="value-text" id="phDisp">••••••••</span><button class="reveal-btn" onclick="togglePh('${escapeHtml(id.passphrase)}')">Show</button><button class="copy-btn" onclick="copyText('${escapeHtml(id.passphrase)}', this)">Copy</button></div></div>` : ''}${id.purpose ? `<div class="detail-section"><div class="detail-label">Purpose</div><div class="detail-value muted"><span class="value-text">${escapeHtml(id.purpose)}</span></div></div>` : ''}<div class="detail-section"><div class="detail-label">Stats</div><div class="detail-meta"><div><div class="detail-label">Created</div><div class="detail-value muted">${formatDT(id.created)}</div></div><div><div class="detail-label">Last Used</div><div class="detail-value muted">${id.last_used ? formatDT(id.last_used) : 'Never'}</div></div><div><div class="detail-label">Uses</div><div class="detail-value muted">${id.use_count || 0}</div></div><div><div class="detail-label">Rotations</div><div class="detail-value muted">${(id.previous_aliases || []).length}</div></div></div></div><div class="detail-actions"><button class="btn btn-secondary" onclick="rotateId('${id.name}')">🔄 Rotate</button><button class="btn btn-danger" onclick="confirmBurn('${id.name}')">🔥 Burn</button></div>`; }
+        function togglePwd(p) { const d = document.getElementById('pwdDisp'), b = d.nextElementSibling; if (d.textContent === '••••••••') { d.textContent = p; b.textContent = 'Hide'; } else { d.textContent = '••••••••'; b.textContent = 'Show'; } }
+        function togglePh(p) { const d = document.getElementById('phDisp'), b = d.nextElementSibling; if (d.textContent === '••••••••') { d.textContent = p; b.textContent = 'Hide'; } else { d.textContent = '••••••••'; b.textContent = 'Show'; } }
+        async function createIdentity() { const name = document.getElementById('newIdentityName').value.trim(); if (!name) { showToast('Name required', 'error'); return; } const btn = document.querySelector('#createModal .btn-primary'); btn.classList.add('loading'); try { const res = await apiFetch('/api/identity/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, purpose: document.getElementById('newIdentityPurpose').value.trim(), generate_password: document.getElementById('newIdentityPassword').checked, generate_passphrase: document.getElementById('newIdentityPassphrase').checked }) }); const data = await res.json(); if (data.success) { closeModal('createModal'); showToast(`Identity "${name}" created!`); loadIdentities(); } else { showToast(data.error || 'Failed', 'error'); } } catch (e) { showToast('Failed', 'error'); } finally { btn.classList.remove('loading'); } }
+        async function rotateId(name) { confirmCallback = async () => { const btn = document.getElementById('confirmBtn'); btn.classList.add('loading'); try { const res = await apiFetch(`/api/identity/${encodeURIComponent(name)}/rotate`, { method: 'POST' }); const data = await res.json(); if (data.success) { closeModal('confirmModal'); closeModal('viewModal'); showToast(`Rotated "${name}"!`); loadIdentities(); } else { showToast(data.error || 'Failed', 'error'); } } catch (e) { showToast('Failed', 'error'); } finally { btn.classList.remove('loading'); } }; document.getElementById('confirmIcon').textContent = '🔄'; document.getElementById('confirmIcon').className = 'confirm-icon warning'; document.getElementById('confirmTitle').textContent = 'Rotate Identity?'; document.getElementById('confirmMessage').textContent = 'Generate new alias and password:'; document.getElementById('confirmName').textContent = name; document.getElementById('confirmBtn').className = 'btn btn-primary'; document.getElementById('confirmBtn').querySelector('.btn-text').textContent = 'Rotate'; openModal('confirmModal'); }
+        function confirmBurn(name) { confirmCallback = async () => { const btn = document.getElementById('confirmBtn'); btn.classList.add('loading'); try { const res = await apiFetch(`/api/identity/${encodeURIComponent(name)}/burn`, { method: 'DELETE' }); const data = await res.json(); if (data.success) { closeModal('confirmModal'); closeModal('viewModal'); showToast(`Burned "${name}"!`, 'warning'); loadIdentities(); } else { showToast(data.error || 'Failed', 'error'); } } catch (e) { showToast('Failed', 'error'); } finally { btn.classList.remove('loading'); } }; document.getElementById('confirmIcon').textContent = '🔥'; document.getElementById('confirmIcon').className = 'confirm-icon danger'; document.getElementById('confirmTitle').textContent = 'Burn Identity?'; document.getElementById('confirmMessage').textContent = 'This cannot be undone:'; document.getElementById('confirmName').textContent = name; document.getElementById('confirmBtn').className = 'btn btn-danger'; document.getElementById('confirmBtn').querySelector('.btn-text').textContent = 'Burn'; openModal('confirmModal'); }
+        function confirmAction() { if (confirmCallback) confirmCallback(); }
+        
+        // Metadata Stripper
+        const dropZone = document.getElementById('fileDropZone');
+        dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
+        function handleFileSelect(e) { handleFiles(e.target.files); }
+        function handleFiles(files) { for (let f of files) { if (!selectedFiles.find(x => x.name === f.name)) selectedFiles.push(f); } renderFileList(); }
+        let cleanedFiles = {};
+        function renderFileList() { const list = document.getElementById('fileList'), actions = document.getElementById('metadataActions'); if (selectedFiles.length === 0) { list.innerHTML = ''; actions.style.display = 'none'; return; } actions.style.display = 'flex'; list.innerHTML = selectedFiles.map((f, i) => `<div class="file-item" data-idx="${i}"><span class="file-item-icon">${getFileIcon(f.type)}</span><div class="file-item-info"><div class="file-item-name">${escapeHtml(f.name)}</div><div class="file-item-size">${formatSize(f.size)}</div></div><span class="file-item-status pending" id="status-${i}">Ready</span><button class="btn btn-sm btn-secondary" id="download-${i}" style="display:none;margin-left:8px;" onclick="downloadCleanedFile(${i})">📥 Download</button><button class="file-item-remove" onclick="removeFile(${i})">&times;</button></div>`).join(''); }
+        function getFileIcon(type) { if (type.startsWith('image')) return '🖼️'; if (type.startsWith('audio')) return '🎵'; if (type.startsWith('video')) return '🎬'; return '📄'; }
+        function formatSize(b) { if (b < 1024) return b + ' B'; if (b < 1048576) return (b / 1024).toFixed(1) + ' KB'; return (b / 1048576).toFixed(1) + ' MB'; }
+        function removeFile(i) { selectedFiles.splice(i, 1); delete cleanedFiles[i]; renderFileList(); }
+        function clearFiles() { selectedFiles = []; cleanedFiles = {}; renderFileList(); showToast('Files cleared'); }
+        async function stripAllMetadata() {
+            if (selectedFiles.length === 0) { showToast('No files selected', 'error'); return; }
+            const btn = document.querySelector('#metadataActions .btn-primary'); btn.classList.add('loading');
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const status = document.getElementById(`status-${i}`);
+                const downloadBtn = document.getElementById(`download-${i}`);
+                status.textContent = 'Processing...'; status.className = 'file-item-status processing';
+                downloadBtn.style.display = 'none';
+                try {
+                    const formData = new FormData(); formData.append('file', selectedFiles[i]);
+                    const res = await fetch('/api/metadata/strip', { method: 'POST', body: formData });
+                    if (res.ok) {
+                        const blob = await res.blob();
+                        const name = selectedFiles[i].name;
+                        const ext = name.substring(name.lastIndexOf('.'));
+                        const baseName = name.substring(0, name.lastIndexOf('.'));
+                        cleanedFiles[i] = { blob, filename: `${baseName}_clean${ext}` };
+                        status.textContent = 'Cleaned!'; status.className = 'file-item-status done';
+                        downloadBtn.style.display = 'inline-flex';
+                    } else {
+                        const data = await res.json();
+                        status.textContent = data.error || 'Error'; status.className = 'file-item-status error';
+                    }
+                } catch (e) { status.textContent = 'Error'; status.className = 'file-item-status error'; }
+            }
+            btn.classList.remove('loading'); showToast('Metadata stripping complete! Click Download to save cleaned files.');
+        }
+        function downloadCleanedFile(i) {
+            if (!cleanedFiles[i]) { showToast('File not ready', 'error'); return; }
+            const { blob, filename } = cleanedFiles[i];
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = filename;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast(`Downloaded ${filename}`);
+        }
+        function downloadAllCleaned() {
+            const keys = Object.keys(cleanedFiles);
+            if (keys.length === 0) { showToast('No cleaned files to download', 'warning'); return; }
+            keys.forEach(i => downloadCleanedFile(i));
+        }
+        async function inspectSelectedFile() {
+            if (selectedFiles.length === 0) { showToast('Select a file first', 'error'); return; }
+            const file = selectedFiles[0];
+            const btn = document.querySelector('#metadataActions .btn-info');
+            const resultsDiv = document.getElementById('inspectionResults');
+            btn.classList.add('loading');
+            resultsDiv.style.display = 'none';
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                const res = await fetch('/api/metadata/inspect', { method: 'POST', body: formData });
+                if (res.ok) {
+                    const data = await res.json();
+                    displayInspectionResults(file.name, data.metadata);
+                    resultsDiv.style.display = 'block';
+                    showToast('Metadata inspection complete');
+                } else {
+                    const error = await res.json();
+                    showToast(error.error || 'Inspection failed', 'error');
+                }
+            } catch (e) {
+                showToast('Inspection failed: ' + e.message, 'error');
+            }
+            btn.classList.remove('loading');
+        }
+        function displayInspectionResults(filename, metadata) {
+            const resultsDiv = document.getElementById('inspectionResults');
+            if (!metadata || Object.keys(metadata).length === 0) {
+                resultsDiv.innerHTML = `<div class="card" style="background: var(--bg-secondary);"><p style="color: var(--text-secondary); text-align: center; padding: 20px;">No metadata found in ${escapeHtml(filename)}</p></div>`;
+                return;
+            }
+            let html = `<div class="card" style="background: var(--bg-secondary);"><h3 style="margin-bottom: 15px; color: var(--accent);">🔍 Metadata Inspection: ${escapeHtml(filename)}</h3>`;
+            const dangerous = ['GPS', 'Location', 'Coordinates', 'Latitude', 'Longitude', 'Device', 'Camera', 'Software', 'Author', 'Creator'];
+            const categories = {};
+            for (const [key, value] of Object.entries(metadata)) {
+                const category = key.split(':')[0] || 'General';
+                if (!categories[category]) categories[category] = [];
+                const isDangerous = dangerous.some(d => key.includes(d));
+                categories[category].push({ key, value, dangerous: isDangerous });
+            }
+            for (const [category, items] of Object.entries(categories)) {
+                html += `<div style="margin-bottom: 15px; padding: 12px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);"></div>`;
+            }
+            html += `<div style="margin-top: 15px;"><button class="btn btn-primary" onclick="stripAllMetadata()">🧹 Strip This Metadata</button></div></div>`;
+            resultsDiv.innerHTML = html;
+        }
+        
+        // Checklist
+        let checklistState = JSON.parse(localStorage.getItem('opsecChecklist') || '{}');
+        function initChecklist() { document.querySelectorAll('.checklist-item').forEach(item => { if (checklistState[item.dataset.id]) item.classList.add('checked'); }); updateChecklistProgress(); }
+        function toggleChecklist(item) { item.classList.toggle('checked'); checklistState[item.dataset.id] = item.classList.contains('checked'); localStorage.setItem('opsecChecklist', JSON.stringify(checklistState)); updateChecklistProgress(); }
+        function updateChecklistProgress() { const items = document.querySelectorAll('.checklist-item'), checked = document.querySelectorAll('.checklist-item.checked').length; const pct = Math.round((checked / items.length) * 100); document.getElementById('checklistPercent').textContent = pct + '%'; document.getElementById('checklistFill').style.width = pct + '%'; }
+        function resetChecklist() { checklistState = {}; localStorage.removeItem('opsecChecklist'); document.querySelectorAll('.checklist-item').forEach(i => i.classList.remove('checked')); updateChecklistProgress(); showToast('Checklist reset'); }
+        function checkAll() { document.querySelectorAll('.checklist-item').forEach(i => { i.classList.add('checked'); checklistState[i.dataset.id] = true; }); localStorage.setItem('opsecChecklist', JSON.stringify(checklistState)); updateChecklistProgress(); showToast('All items checked!'); }
+        initChecklist();
+        
+        // Noise generator removed from UI and script (user requested)
+        
+        // Digital hygiene auditor removed from UI and script (user requested)
+        
+        // Util
+        function escapeHtml(t) { if (!t) return ''; const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+        function formatDate(d) { if (!d) return '?'; return new Date(d).toLocaleDateString(); }
+        function formatDT(d) { if (!d) return '?'; const dt = new Date(d); return dt.toLocaleDateString() + ' ' + dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+        
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.active').forEach(m => closeModal(m.id)); });
+        document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) closeModal(o.id); }));
+    </script>
+</body>
+</html>

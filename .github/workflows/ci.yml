@@ -1,0 +1,38 @@
+name: CI / Build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  lint-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Syntax check
+        run: python -m py_compile app.py password_generator.py compartmentalization.py metadata_stripper.py credential_vault.py cli.py
+
+      - name: Build Docker image
+        run: |
+          docker build -t ghcr.io/${{ github.repository_owner }}/obscura-opsec:${{ github.sha }} .
+
+      - name: Publish to GHCR (optional)
+        if: secrets.CR_PAT
+        env:
+          CR_PAT: ${{ secrets.CR_PAT }}
+        run: |
+          echo "$CR_PAT" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker push ghcr.io/${{ github.repository_owner }}/obscura-opsec:${{ github.sha }}
