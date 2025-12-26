@@ -30,7 +30,7 @@ jobs:
           docker build -t ghcr.io/${{ github.repository_owner }}/obscura-opsec:${{ github.sha }} .
 
       - name: Publish to GHCR (optional)
-        if: secrets.CR_PAT
+        if: ${{ secrets.CR_PAT != '' }}
         env:
           CR_PAT: ${{ secrets.CR_PAT }}
         run: |
