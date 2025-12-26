@@ -30,9 +30,12 @@ jobs:
           docker build -t ghcr.io/${{ github.repository_owner }}/obscura-opsec:${{ github.sha }} .
 
       - name: Publish to GHCR (optional)
-        if: ${{ secrets.CR_PAT != '' }}
         env:
           CR_PAT: ${{ secrets.CR_PAT }}
         run: |
-          echo "$CR_PAT" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          docker push ghcr.io/${{ github.repository_owner }}/obscura-opsec:${{ github.sha }}
+          if [ -n "$CR_PAT" ]; then
+            echo "$CR_PAT" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            docker push ghcr.io/${{ github.repository_owner }}/obscura-opsec:${{ github.sha }}
+          else
+            echo "CR_PAT not set; skipping GHCR publish"
+          fi
